@@ -5,13 +5,13 @@ class StackoverflowSpider(scrapy.Spider):
     name = "stackoverflow_spider"
     allowed_domains = ["stackoverflow.com"]
     start_urls = [
-        'https://stackoverflow.com/questions/tagged/google-sheets'
+        'https://stackoverflow.com/questions/tagged/google-sheets?sort=MostVotes&edited=true'
     ]
 
     custom_settings = {
-        'DOWNLOAD_DELAY': 2,  # Thêm độ trễ 2 giây giữa các yêu cầu
+        'DOWNLOAD_DELAY': 2,
         'RETRY_ENABLED': True,
-        'RETRY_TIMES': 5,  # Tăng số lần retry lên 5
+        'RETRY_TIMES': 5,
         'DOWNLOADER_MIDDLEWARES': {
             'stackoverflow_crawler.middlewares.TooManyRequestsRetryMiddleware': 550,
             'scrapy.downloadermiddlewares.retry.RetryMiddleware': None,
@@ -28,7 +28,10 @@ class StackoverflowSpider(scrapy.Spider):
             full_question_url = response.urljoin(question_url)
             excerpt = question.css('div.s-post-summary--content-excerpt::text').get().strip()
             answers = question.css('div.s-post-summary--stats-item.has-answers span.s-post-summary--stats-item-number::text').get()
-            views = question.css('div.s-post-summary--stats-item span.s-post-summary--stats-item-number::text').re_first(r'\d+')
+            
+            # Sử dụng regex để lấy giá trị của views, bao gồm cả giá trị âm
+            views = question.css('div.s-post-summary--stats-item.s-post-summary--stats-item__emphasized span.s-post-summary--stats-item-number::text').re_first(r'-?\d+')
+            
             author = question.css('div.s-user-card--info a::text').get()
             asked_time = question.css('time.s-user-card--time span::attr(title)').get()
 
@@ -70,15 +73,24 @@ class StackoverflowSpider(scrapy.Spider):
         question_content = response.css('div.s-prose.js-post-body').get(default='').strip()
 
         # Lấy câu trả lời tốt nhất nếu có (text)
-        best_answer = response.css('div.answer.accepted-answer div.s-prose.js-post-body').get(default='').strip()
+        best_answer = response.css('div.answer.js-answer div.s-prose.js-post-body').get(default='').strip()
+        
+        # Lấy câu trả lời hiển thị thứ hai nếu có (text)
+        second_answer_selector = response.css('div.answer.js-answer')
+        second_answer = ''
+        if len(second_answer_selector) > 1:
+            second_answer = second_answer_selector[1].css('div.s-prose.js-post-body').get(default='').strip()
 
         # Kiểm tra và thay thế giá trị trống bằng "chưa có câu trả lời"
         if not best_answer:
             best_answer = "chưa có câu trả lời"
+        
+        # Kiểm tra và thay thế giá trị trống bằng "không có câu trả lời"
+        if not second_answer:
+            second_answer = "không có câu trả lời"
 
-        # Lưu vào CSV
         with open('stackoverflow_questions.csv', 'a', newline='', encoding='utf-8') as csvfile:
-            fieldnames = ['title', 'url', 'excerpt', 'question_content', 'best_answer', 'answers', 'views', 'author', 'asked_time']
+            fieldnames = ['title', 'url', 'excerpt', 'question_content', 'best_answer', 'second_answer', 'answers', 'views', 'author', 'asked_time']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writerow({
                 'title': title,
@@ -86,19 +98,19 @@ class StackoverflowSpider(scrapy.Spider):
                 'excerpt': excerpt,
                 'question_content': question_content,
                 'best_answer': best_answer,
+                'second_answer': second_answer,
                 'answers': answers,
                 'views': views,
                 'author': author,
                 'asked_time': asked_time
             })
-
-        # In dữ liệu ra để kiểm tra
         print({
             'title': title,
             'url': full_question_url,
             'excerpt': excerpt,
             'question_content': question_content,
             'best_answer': best_answer,
+            'second_answer': second_answer,
             'answers': answers,
             'views': views,
             'author': author,
