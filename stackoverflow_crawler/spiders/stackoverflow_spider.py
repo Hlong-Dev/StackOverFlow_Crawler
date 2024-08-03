@@ -5,7 +5,7 @@ class StackoverflowSpider(scrapy.Spider):
     name = "stackoverflow_spider"
     allowed_domains = ["stackoverflow.com"]
     start_urls = [
-        'https://stackoverflow.com/questions/tagged/google-sheets?sort=MostVotes&edited=true'
+        'https://stackoverflow.com/questions/tagged/google-sheets'
     ]
 
     custom_settings = {
@@ -28,14 +28,10 @@ class StackoverflowSpider(scrapy.Spider):
             full_question_url = response.urljoin(question_url)
             excerpt = question.css('div.s-post-summary--content-excerpt::text').get().strip()
             answers = question.css('div.s-post-summary--stats-item.has-answers span.s-post-summary--stats-item-number::text').get()
-            
-            # Sử dụng regex để lấy giá trị của views, bao gồm cả giá trị âm
             views = question.css('div.s-post-summary--stats-item.s-post-summary--stats-item__emphasized span.s-post-summary--stats-item-number::text').re_first(r'-?\d+')
-            
             author = question.css('div.s-user-card--info a::text').get()
             asked_time = question.css('time.s-user-card--time span::attr(title)').get()
-
-            # Đảm bảo rằng nếu không có câu trả lời thì giá trị là 0
+    
             if not answers:
                 answers = "0"
 
@@ -55,9 +51,13 @@ class StackoverflowSpider(scrapy.Spider):
             )
         
         # Xử lý phân trang
-        next_page_url = response.css('a[rel="next"]::attr(href)').get()
-        if next_page_url:
-            yield scrapy.Request(response.urljoin(next_page_url), callback=self.parse)
+        current_page = response.css('div.s-pagination--item.is-selected::text').get()
+        if current_page:
+            current_page = int(current_page)
+            if current_page < 3743:
+                next_page_url = response.css('a[rel="next"]::attr(href)').get()
+                if next_page_url:
+                    yield scrapy.Request(response.urljoin(next_page_url), callback=self.parse)
 
     def parse_question(self, response):
         # Lấy dữ liệu từ meta
